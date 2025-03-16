@@ -14,15 +14,6 @@ import java.lang.instrument.Instrumentation;
 import java.net.InetSocketAddress;
 
 public class PrometheusAgent {
-    private static final PrometheusMeterRegistry meterRegistry =
-            new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
-
-    static {
-        new JvmMemoryMetrics().bindTo(meterRegistry);
-        new JvmGcMetrics().bindTo(meterRegistry);
-        new JvmHeapPressureMetrics().bindTo(meterRegistry);
-    }
-
     public static void premain(String agentArgs, Instrumentation inst) {
         runPrometheusScrapeEndpoint();
     }
@@ -33,6 +24,17 @@ public class PrometheusAgent {
 
     private static void runPrometheusScrapeEndpoint() {
         try {
+            if (Runtime.getRuntime().maxMemory() < 128 * 1024 * 1024) {
+                return;
+            }
+
+            PrometheusMeterRegistry meterRegistry =
+                    new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+
+            new JvmMemoryMetrics().bindTo(meterRegistry);
+            new JvmGcMetrics().bindTo(meterRegistry);
+            new JvmHeapPressureMetrics().bindTo(meterRegistry);
+
             HttpServer server = HttpServer.create(new InetSocketAddress(7001), 0);
             server.createContext("/prometheus", httpExchange -> {
                 String response = meterRegistry.scrape();
