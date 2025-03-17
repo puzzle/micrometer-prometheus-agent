@@ -49,7 +49,7 @@ public class PrometheusAgent {
                         os.write(response.getBytes());
                         os.close();
                     } catch (Throwable e) {
-                        //System.err.println("Failed to scrape metrics: " + e.getMessage());
+                        System.err.println("Failed to scrape metrics: " + e.getMessage());
                         e.printStackTrace();
                         httpExchange.sendResponseHeaders(500, 0);
                     }
@@ -59,8 +59,9 @@ public class PrometheusAgent {
             Thread server_thread = new Thread(server::start);
             server_thread.setDaemon(true);
             server_thread.start();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (Throwable e) {
+            System.err.println("Failed to start Prometheus scrape endpoint: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
