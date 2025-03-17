@@ -47,7 +47,7 @@ public class PrometheusAgent {
             });
 
             Thread server_thread = new Thread(server::start);
-            server_thread.setDaemon(true);
+            //server_thread.setDaemon(true);
             server_thread.start();
         } catch (IOException e) {
             throw new RuntimeException(e);
