@@ -14,6 +14,8 @@ import java.lang.instrument.Instrumentation;
 import java.net.InetSocketAddress;
 
 public class PrometheusAgent {
+    private static PrometheusMeterRegistry meterRegistry;
+
     public static void premain(String agentArgs, Instrumentation inst) {
         runPrometheusScrapeEndpoint();
     }
@@ -28,8 +30,7 @@ public class PrometheusAgent {
                 return;
             }
 
-            PrometheusMeterRegistry meterRegistry =
-                    new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+            meterRegistry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
 
             new JvmMemoryMetrics().bindTo(meterRegistry);
             new JvmGcMetrics().bindTo(meterRegistry);
