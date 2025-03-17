@@ -1,6 +1,6 @@
 package io.micrometer.agent.prometheus;
 
-import com.sun.net.httpserver.HttpServer;
+import fi.iki.elonen.NanoHTTPD;
 import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmHeapPressureMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
@@ -9,9 +9,7 @@ import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.prometheus.client.exporter.common.TextFormat;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.lang.instrument.Instrumentation;
-import java.net.InetSocketAddress;
 
 public class PrometheusAgent {
     public static void premain(String agentArgs, Instrumentation inst) {
@@ -35,20 +33,24 @@ public class PrometheusAgent {
             new JvmGcMetrics().bindTo(meterRegistry);
             new JvmHeapPressureMetrics().bindTo(meterRegistry);
 
-            HttpServer server = HttpServer.create(new InetSocketAddress(7001), 0);
-            server.createContext("/prometheus", httpExchange -> {
-                String response = meterRegistry.scrape();
-                httpExchange.getResponseHeaders().set("Content-Type", TextFormat.CONTENT_TYPE_004);
-                httpExchange.sendResponseHeaders(200, response.length());
-                OutputStream os = httpExchange.getResponseBody();
-                os.write(response.getBytes());
-                os.close();
-            });
+            NanoHTTPD server = new NanoHTTPD(7001) {
+                @Override
+                public NanoHTTPD.Response serve(IHTTPSession session) {
+                    String response = meterRegistry.scrape();
+                    return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, TextFormat.CONTENT_TYPE_004, response);
+                }
+            };
 
-            Thread server_thread = new Thread(server::start);
+            Thread server_thread = new Thread(() -> {
+                try {
+                    server.start();
+                } catch (Throwable e) {
+                    throw new RuntimeException(e);
+                }
+            });
             server_thread.setDaemon(true);
             server_thread.start();
-        } catch (IOException e) {
+        } catch (Throwable e) {
             throw new RuntimeException(e);
         }
     }
