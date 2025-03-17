@@ -37,17 +37,27 @@ public class PrometheusAgent {
             new JvmHeapPressureMetrics().bindTo(meterRegistry);
 
             HttpServer server = HttpServer.create(new InetSocketAddress(7001), 0);
-            server.createContext("/prometheus", httpExchange -> {
-                String response = meterRegistry.scrape();
-                httpExchange.getResponseHeaders().set("Content-Type", TextFormat.CONTENT_TYPE_004);
-                httpExchange.sendResponseHeaders(200, response.length());
-                OutputStream os = httpExchange.getResponseBody();
-                os.write(response.getBytes());
-                os.close();
+            server.createContext("/prometheus", new com.sun.net.httpserver.HttpHandler() {
+                @Override
+                public void handle(com.sun.net.httpserver.HttpExchange httpExchange) throws IOException {
+                    System.err.println("Prometheus scrape endpoint hit");
+                    try {
+                        String response = meterRegistry.scrape();
+                        httpExchange.getResponseHeaders().set("Content-Type", TextFormat.CONTENT_TYPE_004);
+                        httpExchange.sendResponseHeaders(200, response.length());
+                        OutputStream os = httpExchange.getResponseBody();
+                        os.write(response.getBytes());
+                        os.close();
+                    } catch (Throwable e) {
+                        //System.err.println("Failed to scrape metrics: " + e.getMessage());
+                        e.printStackTrace();
+                        httpExchange.sendResponseHeaders(500, 0);
+                    }
+                }
             });
 
             Thread server_thread = new Thread(server::start);
-            //server_thread.setDaemon(true);
+            server_thread.setDaemon(true);
             server_thread.start();
         } catch (IOException e) {
             throw new RuntimeException(e);
