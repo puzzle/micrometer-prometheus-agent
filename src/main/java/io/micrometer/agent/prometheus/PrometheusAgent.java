@@ -60,15 +60,13 @@ public class PrometheusAgent {
                 }
             });
 
-            server.setExecutor(Executors.newCachedThreadPool());
-            server.start();
-            // Thread server_thread = new Thread(server::start);
-            // server_thread.setDaemon(true);
             System.err.println("About to start HttpServer...");
             try (FileWriter fw = new FileWriter("/tmp/agent.log", true)) {
                 fw.write("About to start HttpServer...\n");
                 fw.flush();
-                server.start();
+                Thread server_thread = new Thread(server::start);
+                server_thread.setDaemon(false);
+                server_thread.start();
                 fw.write("HttpServer.start() returned!\n");
                 fw.flush();
             }
