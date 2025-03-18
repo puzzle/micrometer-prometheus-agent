@@ -8,6 +8,7 @@ import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.prometheus.client.exporter.common.TextFormat;
 
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.instrument.Instrumentation;
@@ -31,6 +32,7 @@ public class PrometheusAgent {
             if (Runtime.getRuntime().maxMemory() < 128 * 1024 * 1024) {
                 return;
             }
+
 
             meterRegistry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
 
@@ -63,8 +65,13 @@ public class PrometheusAgent {
             // Thread server_thread = new Thread(server::start);
             // server_thread.setDaemon(true);
             System.err.println("About to start HttpServer...");
-            server.start();
-            System.err.println("HttpServer.start() returned!");
+            try (FileWriter fw = new FileWriter("/tmp/agent.log", true)) {
+                fw.write("About to start HttpServer...\n");
+                fw.flush();
+                server.start();
+                fw.write("HttpServer.start() returned!\n");
+                fw.flush();
+            }
 
         } catch (Throwable e) {
             System.err.println("Failed to start Prometheus scrape endpoint: " + e.getMessage());
