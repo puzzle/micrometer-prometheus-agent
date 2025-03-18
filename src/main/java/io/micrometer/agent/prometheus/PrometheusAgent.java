@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.instrument.Instrumentation;
 import java.net.InetSocketAddress;
+import java.util.concurrent.Executors;
 
 public class PrometheusAgent {
     private static PrometheusMeterRegistry meterRegistry;
