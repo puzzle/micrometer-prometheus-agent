@@ -53,7 +53,7 @@ public class PrometheusAgent {
                         os.write(response.getBytes());
                         os.close();
                     } catch (Throwable e) {
-                        System.err.println("Failed to scrape metrics: " + e.getMessage());
+                        logToFile("Failed to scrape metrics: " + e.getMessage());
                         e.printStackTrace();
                         httpExchange.sendResponseHeaders(500, 0);
                     }
@@ -61,19 +61,24 @@ public class PrometheusAgent {
             });
 
             System.err.println("About to start HttpServer...");
-            try (FileWriter fw = new FileWriter("/tmp/agent.log", true)) {
-                fw.write("About to start HttpServer...\n");
-                fw.flush();
-                Thread server_thread = new Thread(server::start);
-                server_thread.setDaemon(false);
-                server_thread.start();
-                fw.write("HttpServer.start() returned!\n");
-                fw.flush();
-            }
+            logToFile("About to start HttpServer...");
+            Thread server_thread = new Thread(server::start);
+            server_thread.setDaemon(false);
+            server_thread.start();
+            logToFile("HttpServer.start() returned!");
 
         } catch (Throwable e) {
-            System.err.println("Failed to start Prometheus scrape endpoint: " + e.getMessage());
+            logToFile("Failed to start Prometheus scrape endpoint: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    private static void logToFile(String message) {
+        try (FileWriter fw = new FileWriter("/tmp/agent.log", true)) {
+            fw.write(message + "\n");
+            fw.flush();
+        } catch (IOException e) {
+            System.err.println("Failed to write to log file: " + e.getMessage());
         }
     }
 }
