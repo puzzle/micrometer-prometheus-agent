@@ -15,6 +15,7 @@ import java.net.InetSocketAddress;
 
 public class PrometheusAgent {
     private static PrometheusMeterRegistry meterRegistry;
+    private static HttpServer server;
 
     public static void premain(String agentArgs, Instrumentation inst) {
         runPrometheusScrapeEndpoint();
@@ -36,7 +37,7 @@ public class PrometheusAgent {
             new JvmGcMetrics().bindTo(meterRegistry);
             new JvmHeapPressureMetrics().bindTo(meterRegistry);
 
-            HttpServer server = HttpServer.create(new InetSocketAddress(7001), 0);
+            server = HttpServer.create(new InetSocketAddress(7001), 0);
             server.createContext("/prometheus", new com.sun.net.httpserver.HttpHandler() {
                 @Override
                 public void handle(com.sun.net.httpserver.HttpExchange httpExchange) throws IOException {
@@ -56,9 +57,9 @@ public class PrometheusAgent {
                 }
             });
 
-            Thread server_thread = new Thread(server::start);
-            server_thread.setDaemon(true);
-            server_thread.start();
+            // Thread server_thread = new Thread(server::start);
+            // server_thread.setDaemon(true);
+            server.start();
         } catch (Throwable e) {
             System.err.println("Failed to start Prometheus scrape endpoint: " + e.getMessage());
             e.printStackTrace();
