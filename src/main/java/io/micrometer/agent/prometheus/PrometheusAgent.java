@@ -57,9 +57,14 @@ public class PrometheusAgent {
                 }
             });
 
+            server.setExecutor(Executors.newCachedThreadPool());
+            server.start();
             // Thread server_thread = new Thread(server::start);
             // server_thread.setDaemon(true);
+            System.err.println("About to start HttpServer...");
             server.start();
+            System.err.println("HttpServer.start() returned!");
+
         } catch (Throwable e) {
             System.err.println("Failed to start Prometheus scrape endpoint: " + e.getMessage());
             e.printStackTrace();
