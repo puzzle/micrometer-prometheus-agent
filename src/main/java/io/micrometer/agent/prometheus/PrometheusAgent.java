@@ -7,13 +7,12 @@ import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.prometheus.client.exporter.common.TextFormat;
-
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.instrument.Instrumentation;
+import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
-import java.util.concurrent.Executors;
 
 public class PrometheusAgent {
     private static PrometheusMeterRegistry meterRegistry;
@@ -75,8 +74,9 @@ public class PrometheusAgent {
     }
 
     private static void logToFile(String message) {
+        long processId = Long.parseLong(ManagementFactory.getRuntimeMXBean().getName().split("@")[0]);
         try (FileWriter fw = new FileWriter("/tmp/agent.log", true)) {
-            fw.write(message + "\n");
+            fw.write("[PID: " + processId + "] " + message + "\n");
             fw.flush();
         } catch (IOException e) {
             System.err.println("Failed to write to log file: " + e.getMessage());
