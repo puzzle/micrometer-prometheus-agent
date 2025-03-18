@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 public class PrometheusAgent {
     private static PrometheusMeterRegistry meterRegistry;
     private static HttpServer server;
+    private static Thread serverThread;
 
     public static void premain(String agentArgs, Instrumentation inst) {
         runPrometheusScrapeEndpoint();
@@ -62,9 +63,9 @@ public class PrometheusAgent {
 
             System.err.println("About to start HttpServer...");
             logToFile("About to start HttpServer...");
-            Thread server_thread = new Thread(server::start);
-            server_thread.setDaemon(false);
-            server_thread.start();
+            serverThread = new Thread(server::start);
+            serverThread.setDaemon(true);
+            serverThread.start();
             logToFile("HttpServer.start() returned!");
 
         } catch (Throwable e) {
