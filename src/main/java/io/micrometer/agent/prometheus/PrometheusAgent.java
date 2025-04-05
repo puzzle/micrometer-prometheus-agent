@@ -27,7 +27,7 @@ import java.io.IOException;
 
 public class PrometheusAgent {
     private static PrometheusMeterRegistry meterRegistry;
-    private static final String METRICS_ENDPOINT = "https://network-admission-controller.tpl-network-admission-production.svc:8443/metrics/"; // Default Prometheus endpoint
+    private static String METRICS_URL;
     private static ScheduledExecutorService scheduledExecutor;
     private static String NAMESPACE = "default";
     private static String APP_NAME;
@@ -61,29 +61,55 @@ public class PrometheusAgent {
             return false;
         }
 
-        // Trim whitespace and split on first '=' to handle potential extra spaces
-        agentArgs = agentArgs.trim();
-        String[] keyValue = agentArgs.split("=", 2);
-        
-        if (keyValue.length != 2) {
-            System.err.println("Error: Invalid argument format. Use: app=<app>");
+        // Split arguments by comma to support multiple key-value pairs
+        String[] args = agentArgs.split(",");
+        String appName = null;
+        String metricsUrl = null;
+
+        for (String arg : args) {
+            // Trim whitespace and split on first '=' to handle potential extra spaces
+            arg = arg.trim();
+            String[] keyValue = arg.split("=", 2);
+            
+            if (keyValue.length != 2) {
+                System.err.println("Error: Invalid argument format. Use: app=<app> or metrics_url=<url>");
+                return false;
+            }
+
+            String key = keyValue[0].trim().toLowerCase();
+            String value = keyValue[1].trim();
+
+            switch (key) {
+                case "app":
+                    if (value.isEmpty()) {
+                        System.err.println("Error: App name cannot be empty.");
+                        return false;
+                    }
+                    appName = value;
+                    break;
+                case "metrics_url":
+                    if (!value.isEmpty()) {
+                        metricsUrl = value;
+                    }
+                    break;
+                default:
+                    System.err.println("Error: Unsupported argument '" + key + "'. Use 'app' or 'metrics_endpoint'.");
+                    return false;
+            }
+        }
+
+        // Check if app name is provided
+        if (appName == null) {
+            System.err.println("Error: App name must be specified using: app=<app>");
+            return false;
+        }
+        if (metricsUrl == null) {
+            System.err.println("Error: Metrics endpoint must be specified using: metrics_url=<url>");
             return false;
         }
 
-        String key = keyValue[0].trim().toLowerCase();
-        String value = keyValue[1].trim();
-
-        if (!key.equals("app")) {
-            System.err.println("Error: Only 'app' argument is supported. Use: app=<app>");
-            return false;
-        }
-
-        if (value.isEmpty()) {
-            System.err.println("Error: App name cannot be empty.");
-            return false;
-        }
-
-        APP_NAME = value;
+        APP_NAME = appName;
+        METRICS_URL = metricsUrl;
         return true;
     }
 
@@ -131,10 +157,10 @@ public class PrometheusAgent {
     private static void sendMetrics() {
         try {
             //System.err.println("Sending metrics...");
-            
+
             String metricsText = meterRegistry.scrape();
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(METRICS_ENDPOINT + NAMESPACE + "/" + APP_NAME))
+                .uri(URI.create(METRICS_URL + NAMESPACE + "/" + APP_NAME))
                 .header("Content-Type", TextFormat.CONTENT_TYPE_004)
                 .POST(HttpRequest.BodyPublishers.ofString(metricsText))
                 .build();
