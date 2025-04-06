@@ -178,7 +178,7 @@ public class PrometheusAgent {
         }
     }
 
-    private static SSLContext createCustomTrustStoreSslContext() {
+    /* private static SSLContext createCustomTrustStoreSslContext() {
         try {
             // Load the certificate from the file
             FileInputStream certInputStream = new FileInputStream("/certs/tls.crt");
@@ -204,13 +204,13 @@ public class PrometheusAgent {
             //System.err.println("Failed to create custom SSL context: " + e.getMessage());
             throw new RuntimeException("Failed to create custom SSL context", e);
         }
-    }
+    } */
 
     private static final HttpClient httpClient = HttpClient.newBuilder()
         .version(HttpClient.Version.HTTP_1_1)
         .connectTimeout(Duration.ofSeconds(10))
-        .sslContext(createCustomTrustStoreSslContext())
         .build();
+        // .sslContext(createCustomTrustStoreSslContext())
 
     // private static void logToFile(String message) {
     //     long processId = Long.parseLong(ManagementFactory.getRuntimeMXBean().getName().split("@")[0]);
