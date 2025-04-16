@@ -12,6 +12,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
+import java.io.BufferedReader;
+import java.io.StringReader;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyStore;
@@ -19,6 +21,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLContext;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -28,17 +31,17 @@ import java.io.IOException;
 public class PrometheusAgent {
     private static PrometheusMeterRegistry meterRegistry;
     private static String METRICS_URL;
-    private static ScheduledExecutorService scheduledExecutor;
+    private static Thread metricsDaemonThread;
     private static String NAMESPACE = "default";
-    private static String APP_NAME;
+    private static String POD_NAME;
     private static final Path KUBERNETES_NAMESPACE_FILE = Paths.get("/run/secrets/kubernetes.io/serviceaccount/namespace");
-    private static boolean isValidAgentConfig = false;
+    //private static boolean isValidAgentConfig = false;
 
     public static void premain(String agentArgs, Instrumentation inst) {
         readKubernetesNamespace();
 
         // Then parse app name from agent arguments
-        isValidAgentConfig = parseAgentArgs(agentArgs);
+        boolean isValidAgentConfig = parseAgentArgs(agentArgs);
         if (isValidAgentConfig) {
             runPrometheusScrapeEndpoint();
         }
@@ -47,8 +50,8 @@ public class PrometheusAgent {
     public static void agentmain(String agentArgs, Instrumentation inst) {
         readKubernetesNamespace();
 
-        // Then parse app name from agent arguments
-        isValidAgentConfig = parseAgentArgs(agentArgs);
+        // Then parse pod name from agent arguments
+        boolean isValidAgentConfig = parseAgentArgs(agentArgs);
         if (isValidAgentConfig) {
             runPrometheusScrapeEndpoint();
         }
@@ -57,13 +60,13 @@ public class PrometheusAgent {
     private static boolean parseAgentArgs(String agentArgs) {
         // Validate agent arguments
         if (agentArgs == null || agentArgs.isEmpty()) {
-            System.err.println("Error: App name must be specified using the format: app=<app>");
+            System.err.println("Error: Pod name must be specified using the format: pod=<pod>");
             return false;
         }
 
         // Split arguments by comma to support multiple key-value pairs
         String[] args = agentArgs.split(",");
-        String appName = null;
+        String podName = null;
         String metricsUrl = null;
 
         for (String arg : args) {
@@ -72,7 +75,7 @@ public class PrometheusAgent {
             String[] keyValue = arg.split("=", 2);
             
             if (keyValue.length != 2) {
-                System.err.println("Error: Invalid argument format. Use: app=<app> or metrics_url=<url>");
+                System.err.println("Error: Invalid argument format. Use: pod=<pod> or metrics_url=<url>");
                 return false;
             }
 
@@ -80,12 +83,12 @@ public class PrometheusAgent {
             String value = keyValue[1].trim();
 
             switch (key) {
-                case "app":
+                case "pod":
                     if (value.isEmpty()) {
-                        System.err.println("Error: App name cannot be empty.");
+                        System.err.println("Error: Pod name cannot be empty.");
                         return false;
                     }
-                    appName = value;
+                    podName = value;
                     break;
                 case "metrics_url":
                     if (!value.isEmpty()) {
@@ -93,14 +96,14 @@ public class PrometheusAgent {
                     }
                     break;
                 default:
-                    System.err.println("Error: Unsupported argument '" + key + "'. Use 'app' or 'metrics_endpoint'.");
+                    System.err.println("Error: Unsupported argument '" + key + "'. Use 'pod' or 'metrics_url'.");
                     return false;
             }
         }
 
-        // Check if app name is provided
-        if (appName == null) {
-            System.err.println("Error: App name must be specified using: app=<app>");
+        // Check if pod name is provided
+        if (podName == null) {
+            System.err.println("Error: Pod name must be specified using: pod=<pod>");
             return false;
         }
         if (metricsUrl == null) {
@@ -108,7 +111,7 @@ public class PrometheusAgent {
             return false;
         }
 
-        APP_NAME = appName;
+        POD_NAME = podName;
         METRICS_URL = metricsUrl;
         return true;
     }
@@ -129,24 +132,38 @@ public class PrometheusAgent {
     private static void runPrometheusScrapeEndpoint() {
         try {
             if (Runtime.getRuntime().maxMemory() < 128 * 1024 * 1024) {
+                System.err.println("Less than 128MB of memory available, skipping metrics collection");
                 return;
             }
 
             meterRegistry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
             
-            // Add common labels for namespace and app
+            // Add common labels for namespace and pod
             meterRegistry.config().commonTags(
                 "namespace", NAMESPACE,
-                "app", APP_NAME
+                "pod", POD_NAME
             );
 
             new JvmMemoryMetrics().bindTo(meterRegistry);
             new JvmGcMetrics().bindTo(meterRegistry);
             // new JvmHeapPressureMetrics().bindTo(meterRegistry);
 
-            // Schedule metrics sending every 30 seconds
-            scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
-            scheduledExecutor.scheduleAtFixedRate(PrometheusAgent::sendMetrics, 0, 30, TimeUnit.SECONDS);
+            // Schedule metrics sending every 30 seconds using a daemon thread
+            metricsDaemonThread = new Thread(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        sendMetrics();
+                        Thread.sleep(TimeUnit.SECONDS.toMillis(30));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+            metricsDaemonThread.setDaemon(true);
+            metricsDaemonThread.start();
 
         } catch (Throwable e) {
             //logToFile("Failed to start Prometheus scrape endpoint: " + e.getMessage());
@@ -156,11 +173,26 @@ public class PrometheusAgent {
 
     private static void sendMetrics() {
         try {
-            //System.err.println("Sending metrics...");
+            StringBuilder timestampedMetrics = new StringBuilder();
+            long timestampMillis = System.currentTimeMillis();
 
-            String metricsText = meterRegistry.scrape();
+            try (BufferedReader reader = new BufferedReader(new StringReader(meterRegistry.scrape()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // Only add timestamp to metric lines, not comments
+                    if (!line.startsWith("#") && !line.trim().isEmpty()) {
+                        timestampedMetrics.append(line).append(" ").append(timestampMillis).append("\n");
+                    } else {
+                        timestampedMetrics.append(line).append("\n");
+                    }
+                }
+            }
+
+            String metricsText = timestampedMetrics.toString();
+            System.err.println("Metrics text: " + metricsText);
+
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(METRICS_URL + NAMESPACE + "/" + APP_NAME))
+                .uri(URI.create(METRICS_URL + NAMESPACE + "/" + POD_NAME))
                 .header("Content-Type", TextFormat.CONTENT_TYPE_004)
                 .POST(HttpRequest.BodyPublishers.ofString(metricsText))
                 .build();
