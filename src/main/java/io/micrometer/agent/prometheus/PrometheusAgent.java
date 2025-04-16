@@ -32,13 +32,11 @@ public class PrometheusAgent {
     private static PrometheusMeterRegistry meterRegistry;
     private static String METRICS_URL;
     private static Thread metricsDaemonThread;
-    private static String NAMESPACE = "default";
+    private static String NAMESPACE;
     private static String POD_NAME;
-    private static final Path KUBERNETES_NAMESPACE_FILE = Paths.get("/run/secrets/kubernetes.io/serviceaccount/namespace");
-    //private static boolean isValidAgentConfig = false;
 
     public static void premain(String agentArgs, Instrumentation inst) {
-        readKubernetesNamespace();
+        // readKubernetesNamespace();
 
         // Then parse app name from agent arguments
         boolean isValidAgentConfig = parseAgentArgs(agentArgs);
@@ -47,7 +45,7 @@ public class PrometheusAgent {
         }
     }
 
-    public static void agentmain(String agentArgs, Instrumentation inst) {
+    /*public static void agentmain(String agentArgs, Instrumentation inst) {
         readKubernetesNamespace();
 
         // Then parse pod name from agent arguments
@@ -55,7 +53,7 @@ public class PrometheusAgent {
         if (isValidAgentConfig) {
             runPrometheusScrapeEndpoint();
         }
-    }
+    }*/
 
     private static boolean parseAgentArgs(String agentArgs) {
         // Validate agent arguments
@@ -68,6 +66,7 @@ public class PrometheusAgent {
         String[] args = agentArgs.split(",");
         String podName = null;
         String metricsUrl = null;
+        String namespace = null;
 
         for (String arg : args) {
             // Trim whitespace and split on first '=' to handle potential extra spaces
@@ -83,6 +82,13 @@ public class PrometheusAgent {
             String value = keyValue[1].trim();
 
             switch (key) {
+                case "namespace":
+                    if (value.isEmpty()) {
+                        System.err.println("Error: Namespace cannot be empty.");
+                        return false;
+                    }
+                    namespace = value;
+                    break;
                 case "pod":
                     if (value.isEmpty()) {
                         System.err.println("Error: Pod name cannot be empty.");
@@ -111,12 +117,13 @@ public class PrometheusAgent {
             return false;
         }
 
+        NAMESPACE = namespace;
         POD_NAME = podName;
         METRICS_URL = metricsUrl;
         return true;
     }
 
-    private static void readKubernetesNamespace() {
+    /*private static void readKubernetesNamespace() {
         try {
             if (Files.exists(KUBERNETES_NAMESPACE_FILE)) {
                 String namespace = new String(Files.readAllBytes(KUBERNETES_NAMESPACE_FILE)).trim();
@@ -127,7 +134,7 @@ public class PrometheusAgent {
         } catch (IOException e) {
             System.err.println("Error reading Kubernetes namespace file: " + e.getMessage());
         }
-    }
+    }*/
 
     private static void runPrometheusScrapeEndpoint() {
         try {
@@ -189,7 +196,7 @@ public class PrometheusAgent {
             }
 
             String metricsText = timestampedMetrics.toString();
-            System.err.println("Metrics text: " + metricsText);
+            // System.err.println("Metrics text: " + metricsText);
 
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(METRICS_URL + NAMESPACE + "/" + POD_NAME))
